@@ -262,6 +262,16 @@ def create_mailbox(
             domain=extra.get("gptmail_domain", ""),
             proxy=proxy,
         )
+    elif provider == "cloudmail":
+        return CloudMailMailbox(
+            base_url=extra.get("cloudmail_base_url", ""),
+            admin_email=extra.get("cloudmail_admin_email", ""),
+            admin_password=extra.get("cloudmail_admin_password", ""),
+            domain=extra.get("cloudmail_domain", ""),
+            subdomain=extra.get("cloudmail_subdomain", ""),
+            subdomains=extra.get("cloudmail_subdomains", ""),
+            proxy=proxy,
+        )
     elif provider == "cfworker":
         return CFWorkerMailbox(
             api_url=extra.get("cfworker_api_url", ""),
@@ -1303,6 +1313,195 @@ class GPTMailMailbox(BaseMailbox):
             poll_interval=3,
             poll_once=poll_once,
         )
+
+
+class CloudMailMailbox(BaseMailbox):
+    """标准 CloudMail 邮箱服务"""
+
+    def __init__(
+        self,
+        base_url: str,
+        admin_email: str = "",
+        admin_password: str = "",
+        domain: str = "",
+        subdomain: str = "",
+        subdomains: Any = None,
+        proxy: str = None,
+    ):
+        self.api = (base_url or "").rstrip("/")
+        self.admin_email = str(admin_email or "").strip()
+        self.admin_password = str(admin_password or "").strip()
+        self.domain = self._normalize_domain(domain)
+        self.subdomain = self._normalize_subdomain(subdomain)
+        self.subdomains = self._parse_subdomains(subdomains)
+        self.proxy = build_requests_proxy_config(proxy)
+        self._token = None
+        self._subdomain_index = 0
+
+    @staticmethod
+    def _normalize_domain(domain: Any) -> str:
+        value = str(domain or "").strip().lower()
+        if value.startswith("@"):
+            value = value[1:]
+        return value
+
+    @staticmethod
+    def _normalize_subdomain(value: Any) -> str:
+        sub = str(value or "").strip().lower().strip(".")
+        if sub.startswith("@"):
+            sub = sub[1:]
+        parts = [part for part in sub.split(".") if part]
+        return ".".join(parts)
+
+    @classmethod
+    def _parse_subdomains(cls, value: Any) -> list[str]:
+        if not value:
+            return []
+
+        items: list[Any]
+        if isinstance(value, (list, tuple, set)):
+            items = list(value)
+        else:
+            text = str(value).strip()
+            if not text:
+                return []
+            items = [part for chunk in text.splitlines() for part in chunk.split(",")]
+
+        subdomains: list[str] = []
+        seen = set()
+        for item in items:
+            sub = cls._normalize_subdomain(item)
+            if not sub or sub in seen:
+                continue
+            seen.add(sub)
+            subdomains.append(sub)
+        return subdomains
+
+    def _ensure_config(self) -> None:
+        if not self.api or not self.admin_password:
+            raise RuntimeError("CloudMail 未配置完整：请设置 cloudmail_base_url、cloudmail_admin_password")
+
+    def _generate_local_part(self) -> str:
+        import string
+
+        prefix = "".join(random.choices(string.ascii_lowercase, k=6))
+        suffix = "".join(random.choices(string.digits, k=4))
+        return f"{prefix}{suffix}"
+
+    def _pick_subdomain(self) -> str:
+        if self.subdomains:
+            selected = self.subdomains[self._subdomain_index % len(self.subdomains)]
+            self._subdomain_index += 1
+            return selected
+        return self.subdomain
+
+    def _compose_domain(self) -> str:
+        base_domain = self.domain or self._normalize_domain(self.api.replace("https://", "").replace("http://", "").split("/", 1)[0])
+        sub = self._pick_subdomain()
+        if sub:
+            return f"{sub}.{base_domain}"
+        return base_domain
+
+    def _get_admin_email(self) -> str:
+        if self.admin_email:
+            return self.admin_email
+        domain = self.domain or self._normalize_domain(self.api.replace("https://", "").replace("http://", "").split("/", 1)[0])
+        return f"admin@{domain}"
+
+    def _headers(self, token: str) -> dict:
+        return {
+            "Authorization": token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _get_token(self) -> str:
+        import requests
+
+        if self._token:
+            return self._token
+
+        response = requests.post(
+            f"{self.api}/api/public/genToken",
+            json={"email": self._get_admin_email(), "password": self.admin_password},
+            timeout=15,
+            proxies=self.proxy,
+        )
+        data = response.json()
+        token = ((data or {}).get("data") or {}).get("token", "")
+        if response.status_code >= 400 or not token:
+            raise RuntimeError(f"CloudMail 获取 token 失败: {data}")
+        self._token = token
+        return token
+
+    def get_email(self) -> MailboxAccount:
+        self._ensure_config()
+        domain = self._compose_domain()
+        email = f"{self._generate_local_part()}@{domain}"
+        return MailboxAccount(email=email, account_id=email)
+
+    def get_current_ids(self, account: MailboxAccount) -> set:
+        import requests
+
+        token = self._get_token()
+        response = requests.post(
+            f"{self.api}/api/public/emailList",
+            json={"toEmail": account.email, "timeSort": "desc"},
+            headers=self._headers(token),
+            timeout=15,
+            proxies=self.proxy,
+        )
+        payload = response.json() or {}
+        ids = set()
+        for item in payload.get("data", []) or []:
+            email_id = str(item.get("emailId") or "").strip()
+            if email_id:
+                ids.add(email_id)
+        return ids
+
+    def wait_for_code(
+        self,
+        account: MailboxAccount,
+        keyword: str = "",
+        timeout: int = 120,
+        before_ids: set = None,
+        code_pattern: str = None,
+        **kwargs,
+    ) -> str:
+        import re
+        import requests
+
+        seen = set(before_ids or [])
+        token = self._get_token()
+
+        def poll_once() -> Optional[str]:
+            response = requests.post(
+                f"{self.api}/api/public/emailList",
+                json={"toEmail": account.email, "timeSort": "desc"},
+                headers=self._headers(token),
+                timeout=15,
+                proxies=self.proxy,
+            )
+            payload = response.json() or {}
+            for item in payload.get("data", []) or []:
+                email_id = str(item.get("emailId") or "")
+                if not email_id or email_id in seen:
+                    continue
+                seen.add(email_id)
+                content = " ".join(
+                    [
+                        str(item.get("subject") or ""),
+                        str(item.get("content") or ""),
+                    ]
+                )
+                if keyword and keyword.lower() not in content.lower():
+                    continue
+                code = self._safe_extract(re.sub(r"<[^>]+>", " ", content), code_pattern)
+                if code:
+                    return code
+            return None
+
+        return self._run_polling_wait(timeout=timeout, poll_interval=3, poll_once=poll_once)
 
 
 class CFWorkerMailbox(BaseMailbox):

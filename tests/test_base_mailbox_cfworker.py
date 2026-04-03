@@ -129,5 +129,75 @@ class CFWorkerMailboxTests(unittest.TestCase):
         )
 
 
+class CloudMailMailboxTests(unittest.TestCase):
+    @patch("requests.post")
+    def test_factory_creates_standard_cloudmail_and_generates_sequential_subdomains(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.side_effect = [
+            {"code": 200, "data": {"token": "token-123"}},
+            {"code": 200, "data": []},
+            {"code": 200, "data": []},
+            {"code": 200, "data": []},
+        ]
+
+        mailbox = create_mailbox(
+            "cloudmail",
+            extra={
+                "cloudmail_base_url": "https://cloudmail.example.com",
+                "cloudmail_admin_password": "secret",
+                "cloudmail_domain": "example.com",
+                "cloudmail_subdomains": "alpha,beta,gamma",
+            },
+        )
+
+        first = mailbox.get_email()
+        second = mailbox.get_email()
+        third = mailbox.get_email()
+
+        self.assertEqual(first.email.split("@", 1)[1], "alpha.example.com")
+        self.assertEqual(second.email.split("@", 1)[1], "beta.example.com")
+        self.assertEqual(third.email.split("@", 1)[1], "gamma.example.com")
+
+    @patch("requests.post")
+    def test_standard_cloudmail_falls_back_to_single_subdomain(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"code": 200, "data": {"token": "token-123"}}
+
+        mailbox = create_mailbox(
+            "cloudmail",
+            extra={
+                "cloudmail_base_url": "https://cloudmail.example.com",
+                "cloudmail_admin_password": "secret",
+                "cloudmail_domain": "example.com",
+                "cloudmail_subdomain": "mail",
+            },
+        )
+
+        account = mailbox.get_email()
+
+        self.assertEqual(account.email.split("@", 1)[1], "mail.example.com")
+
+    @patch("requests.post")
+    def test_standard_cloudmail_get_current_ids_reads_existing_message_ids(self, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.side_effect = [
+            {"code": 200, "data": {"token": "token-123"}},
+            {"code": 200, "data": [{"emailId": "m1"}, {"emailId": "m2"}, {"emailId": ""}]},
+        ]
+
+        mailbox = create_mailbox(
+            "cloudmail",
+            extra={
+                "cloudmail_base_url": "https://cloudmail.example.com",
+                "cloudmail_admin_password": "secret",
+                "cloudmail_domain": "example.com",
+            },
+        )
+
+        ids = mailbox.get_current_ids(MailboxAccount(email="user@example.com"))
+
+        self.assertEqual(ids, {"m1", "m2"})
+
+
 if __name__ == "__main__":
     unittest.main()
