@@ -22,6 +22,7 @@ const SELECT_FIELDS: Record<string, { label: string; value: string }[]> = {
     { label: 'Laoudo（固定邮箱）', value: 'laoudo' },
     { label: 'TempMail.lol（自动生成）', value: 'tempmail_lol' },
     { label: 'SkyMail（CloudMail 接口）', value: 'skymail' },
+    { label: 'CloudMail（标准版）', value: 'cloudmail' },
     { label: 'DuckMail（自动生成）', value: 'duckmail' },
     { label: 'MoeMail (sall.cc)', value: 'moemail' },
     { label: 'YYDS Mail / MaliAPI', value: 'maliapi' },
@@ -108,6 +109,18 @@ const TAB_ITEMS = [
           { key: 'skymail_api_base', label: 'API Base', placeholder: 'https://api.skymail.ink' },
           { key: 'skymail_token', label: 'Authorization Token', secret: true },
           { key: 'skymail_domain', label: '邮箱域名', placeholder: 'mail.example.com' },
+        ],
+      },
+      {
+        title: 'CloudMail',
+        desc: '标准 CloudMail 接口（genToken / emailList），支持管理员账号、固定子域和多子域轮询',
+        fields: [
+          { key: 'cloudmail_base_url', label: 'API URL', placeholder: 'https://cloudmail.example.com' },
+          { key: 'cloudmail_admin_email', label: '管理员邮箱（可选）', placeholder: 'admin@example.com' },
+          { key: 'cloudmail_admin_password', label: '管理员密码', secret: true },
+          { key: 'cloudmail_domain', label: '根域名（可选）', placeholder: 'example.com' },
+          { key: 'cloudmail_subdomain', label: '固定子域名（可选）', placeholder: 'mail' },
+          { key: 'cloudmail_subdomains', label: '多子域轮询（可选）', placeholder: 'alpha,beta,gamma' },
         ],
       },
       {

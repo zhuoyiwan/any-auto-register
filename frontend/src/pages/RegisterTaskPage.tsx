@@ -47,6 +47,12 @@ export default function RegisterTaskPage() {
         skymail_api_base: cfg.skymail_api_base || 'https://api.skymail.ink',
         skymail_token: cfg.skymail_token || '',
         skymail_domain: cfg.skymail_domain || '',
+        cloudmail_base_url: cfg.cloudmail_base_url || '',
+        cloudmail_admin_email: cfg.cloudmail_admin_email || '',
+        cloudmail_admin_password: cfg.cloudmail_admin_password || '',
+        cloudmail_domain: cfg.cloudmail_domain || '',
+        cloudmail_subdomain: cfg.cloudmail_subdomain || '',
+        cloudmail_subdomains: cfg.cloudmail_subdomains || '',
         laoudo_auth: cfg.laoudo_auth || '',
         laoudo_email: cfg.laoudo_email || '',
         laoudo_account_id: cfg.laoudo_account_id || '',
@@ -103,6 +109,12 @@ export default function RegisterTaskPage() {
       skymail_api_base: values.skymail_api_base,
       skymail_token: values.skymail_token,
       skymail_domain: values.skymail_domain,
+      cloudmail_base_url: values.cloudmail_base_url,
+      cloudmail_admin_email: values.cloudmail_admin_email,
+      cloudmail_admin_password: values.cloudmail_admin_password,
+      cloudmail_domain: values.cloudmail_domain,
+      cloudmail_subdomain: values.cloudmail_subdomain,
+      cloudmail_subdomains: values.cloudmail_subdomains,
       duckmail_api_url: values.duckmail_api_url,
       duckmail_provider_url: values.duckmail_provider_url,
       duckmail_bearer: values.duckmail_bearer,
@@ -266,6 +278,7 @@ export default function RegisterTaskPage() {
                 { value: 'moemail', label: 'MoeMail (sall.cc)' },
                 { value: 'tempmail_lol', label: 'TempMail.lol' },
                 { value: 'skymail', label: 'SkyMail (CloudMail)' },
+                { value: 'cloudmail', label: 'CloudMail' },
                 { value: 'maliapi', label: 'YYDS Mail / MaliAPI' },
                 { value: 'gptmail', label: 'GPTMail' },
                 { value: 'duckmail', label: 'DuckMail' },
@@ -285,6 +298,32 @@ export default function RegisterTaskPage() {
               </Form.Item>
               <Form.Item name="skymail_domain" label="邮箱域名">
                 <Input placeholder="mail.example.com" />
+              </Form.Item>
+            </>
+          )}
+          {mailProvider === 'cloudmail' && (
+            <>
+              <Form.Item name="cloudmail_base_url" label="API URL">
+                <Input placeholder="https://cloudmail.example.com" />
+              </Form.Item>
+              <Form.Item name="cloudmail_admin_email" label="管理员邮箱（可选）">
+                <Input placeholder="admin@example.com" />
+              </Form.Item>
+              <Form.Item name="cloudmail_admin_password" label="管理员密码">
+                <Input.Password placeholder="请输入管理员密码" />
+              </Form.Item>
+              <Form.Item name="cloudmail_domain" label="根域名（可选）">
+                <Input placeholder="example.com" />
+              </Form.Item>
+              <Form.Item name="cloudmail_subdomain" label="固定子域名（可选）">
+                <Input placeholder="mail" />
+              </Form.Item>
+              <Form.Item
+                name="cloudmail_subdomains"
+                label="多子域轮询（可选）"
+                extra="多个子域用英文逗号分隔，配置后会按顺序轮询。"
+              >
+                <Input placeholder="alpha,beta,gamma" />
               </Form.Item>
             </>
           )}
